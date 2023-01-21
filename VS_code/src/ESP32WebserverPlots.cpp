@@ -24,6 +24,7 @@
 // ---------------------------------------------------------------------------------------
 
 #include "declarations.h"
+#include <Streaming.h>
 
 // SSID and password of Wifi connection:
 const char* ssid = "Arduino_ssid";
@@ -31,7 +32,7 @@ const char* password = "password";
 
 // Configure IP addresses of the local access point
 IPAddress local_IP(192,168,1,1);
-IPAddress gateway(192,168,1,2);
+IPAddress gateway(192,168,1,0);
 IPAddress subnet(255,255,255,0);
 
 // global variables of the LED selected and the intensity of that LED
@@ -51,18 +52,11 @@ WebSocketsServer webSocket = WebSocketsServer(81);    // the websocket uses port
 void setup() {
   Serial.begin(115200);                               // init serial port for debugging
 
-  if (!SPIFFS.begin()) {
-    Serial.println("SPIFFS could not initialize");
-  }
-
-  Serial.print("Setting up Access Point ... ");
-  Serial.println(WiFi.softAPConfig(local_IP, gateway, subnet) ? "Ready" : "Failed!");
-
-  Serial.print("Starting Access Point ... ");
-  Serial.println(WiFi.softAP(ssid, password) ? "Ready" : "Failed!");
-
-  Serial.print("IP address = ");
-  Serial.println(WiFi.softAPIP());
+  if (!SPIFFS.begin()) Serial << "SPIFFS could not initialize" << endl;
+  
+  Serial << "Setting up Access Point ... " << (WiFi.softAPConfig(local_IP, gateway, subnet) ? "Ready" : "Failed!") << endl;
+  Serial << "Starting Access Point ...   " << (WiFi.softAP(ssid, password) ?                  "Ready" : "Failed!") << endl;
+  Serial << "IP address = "                <<  WiFi.softAPIP() << endl;
   
   server.on("/", HTTP_GET, [](AsyncWebServerRequest *request) {    // define here wat the webserver needs to do
     request->send(SPIFFS, "/webpage.html", "text/html");           
@@ -89,7 +83,7 @@ void loop() {
     for(int i=0; i < ARRAY_LENGTH - 1; i++) {
       sens_vals[i] = sens_vals[i+1];
     }
-    sens_vals[ARRAY_LENGTH - 1] = (sens_vals[ARRAY_LENGTH - 1] + random(random_intensity))%10;
+    sens_vals[ARRAY_LENGTH - 1] = random_intensity;
 
     sendJsonArray("graph_update", sens_vals);
   }
@@ -98,10 +92,10 @@ void loop() {
 void webSocketEvent(byte num, WStype_t type, uint8_t * payload, size_t length) {      // the parameters of this callback function are always the same -> num: id of the client who send the event, type: type of message, payload: actual data sent and length: length of payload
   switch (type) {                                     // switch on the type of information sent
     case WStype_DISCONNECTED:                         // if a client is disconnected, then type == WStype_DISCONNECTED
-      Serial.println("Client " + String(num) + " disconnected");
+      Serial << "Client " << String(num) << " disconnected" << endl;
       break;
     case WStype_CONNECTED:                            // if a client is connected, then type == WStype_CONNECTED
-      Serial.println("Client " + String(num) + " connected");
+      Serial << "Client " << String(num) << " connected" << endl;
       
       // send variables to newly connected web client -> as optimization step one could send it just to the new client "num", but for simplicity I left that out here
       sendJson("random_intensity", String(random_intensity));
@@ -113,16 +107,15 @@ void webSocketEvent(byte num, WStype_t type, uint8_t * payload, size_t length) {
       StaticJsonDocument<200> doc;                    // create JSON container 
       DeserializationError error = deserializeJson(doc, payload);
       if (error) {
-         Serial.print(F("deserializeJson() failed: "));
-        Serial.println(error.f_str());
+        Serial << F("deserializeJson() failed: ") << error.f_str() << endl;
         return;
       }
       else {
         // JSON string was received correctly, so information can be retrieved:
         const char* l_type = doc["type"];
         const int l_value = doc["value"];
-        Serial.println("Type: " + String(l_type));
-        Serial.println("Value: " + String(l_value));
+        Serial << "Type:  " << String(l_type)  << endl;
+        Serial << "Value: " << String(l_value) << endl;
 
         // if random_intensity value is received -> update and write to all web clients
         if(String(l_type) == "random_intensity") {
@@ -130,7 +123,7 @@ void webSocketEvent(byte num, WStype_t type, uint8_t * payload, size_t length) {
           sendJson("random_intensity", String(l_value));
         }
       }
-      Serial.println("");
+      Serial << endl;
       break;
   }
 }
